@@ -21,6 +21,8 @@ use winit::{
 };
 
 pub mod resource_manager;
+mod scene;
+use scene::{CameraPushConstants, Scene};
 
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
 const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
@@ -128,71 +130,6 @@ impl InputState {
     }
 }
 
-struct Camera {
-    position: [f32; 3],
-    yaw: f32,
-    pitch: f32,
-    move_speed: f32,
-    look_sensitivity: f32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct CameraPushConstants {
-    position: [f32; 3],
-    yaw: f32,
-    pitch: f32,
-    padding: [f32; 3],
-}
-
-impl Default for Camera {
-    fn default() -> Self {
-        Self {
-            position: [0.0, 0.0, 3.0],
-            yaw: 0.0,
-            pitch: 0.0,
-            move_speed: 3.0,
-            look_sensitivity: 0.0025,
-        }
-    }
-}
-
-impl Camera {
-    fn update(&mut self, input: &mut InputState, delta_time: f32) {
-        self.yaw -= input.mouse_delta.0 * self.look_sensitivity;
-        self.pitch = (self.pitch - input.mouse_delta.1 * self.look_sensitivity)
-            .clamp(-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
-        input.mouse_delta = (0.0, 0.0);
-
-        let forward = [self.yaw.sin(), 0.0, -self.yaw.cos()];
-        let right = [self.yaw.cos(), 0.0, self.yaw.sin()];
-        let mut movement = [0.0, 0.0, 0.0];
-        if input.forward {
-            movement[0] += forward[0];
-            movement[2] += forward[2];
-        }
-        if input.backward {
-            movement[0] -= forward[0];
-            movement[2] -= forward[2];
-        }
-        if input.right {
-            movement[0] += right[0];
-            movement[2] += right[2];
-        }
-        if input.left {
-            movement[0] -= right[0];
-            movement[2] -= right[2];
-        }
-
-        let length = (movement[0] * movement[0] + movement[2] * movement[2]).sqrt();
-        if length > 0.0 {
-            let distance = self.move_speed * delta_time / length;
-            self.position[0] += movement[0] * distance;
-            self.position[2] += movement[2] * distance;
-        }
-    }
-}
-
 struct Renderer {
     window: Window,
     instance: Instance,
@@ -223,7 +160,7 @@ struct Renderer {
     current_frame: usize,
     framebuffer_resized: bool,
     input: InputState,
-    camera: Camera,
+    scene: Scene,
     last_frame: Instant,
 }
 
@@ -367,7 +304,7 @@ impl Renderer {
             current_frame: 0,
             framebuffer_resized: false,
             input: InputState::default(),
-            camera: Camera::default(),
+            scene: Scene::demo(),
             last_frame: Instant::now(),
         })
     }
@@ -376,10 +313,19 @@ impl Renderer {
         let now = Instant::now();
         let delta_time = (now - self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
-        self.camera.update(&mut self.input, delta_time);
+        self.scene.camera.update(
+            self.input.forward,
+            self.input.backward,
+            self.input.left,
+            self.input.right,
+            &mut self.input.mouse_delta,
+            delta_time,
+        );
         println!(
             "camera position: ({:.3}, {:.3}, {:.3})",
-            self.camera.position[0], self.camera.position[1], self.camera.position[2]
+            self.scene.camera.position[0],
+            self.scene.camera.position[1],
+            self.scene.camera.position[2]
         );
 
         let fence = self.in_flight_fences[self.current_frame];
@@ -408,12 +354,7 @@ impl Renderer {
             self.swapchain_extent,
             self.pipeline_layout,
             self.graphics_pipeline,
-            CameraPushConstants {
-                position: self.camera.position,
-                yaw: self.camera.yaw,
-                pitch: self.camera.pitch,
-                padding: [0.0; 3],
-            },
+            &self.scene,
         )?;
         let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
@@ -794,7 +735,7 @@ unsafe fn record_command_buffer(
     extent: vk::Extent2D,
     pipeline_layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
-    camera: CameraPushConstants,
+    scene: &Scene,
 ) -> AppResult<()> {
     device.begin_command_buffer(command_buffer, &vk::CommandBufferBeginInfo::default())?;
     let clear = vk::ClearValue {
@@ -812,17 +753,6 @@ unsafe fn record_command_buffer(
         vk::SubpassContents::INLINE,
     );
     device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
-    let camera_bytes = std::slice::from_raw_parts(
-        (&camera as *const CameraPushConstants).cast::<u8>(),
-        size_of::<CameraPushConstants>(),
-    );
-    device.cmd_push_constants(
-        command_buffer,
-        pipeline_layout,
-        vk::ShaderStageFlags::VERTEX,
-        0,
-        camera_bytes,
-    );
     let viewport = vk::Viewport::default()
         .width(extent.width as f32)
         .height(extent.height as f32)
@@ -830,7 +760,21 @@ unsafe fn record_command_buffer(
     let scissor = vk::Rect2D::default().extent(extent);
     device.cmd_set_viewport(command_buffer, 0, std::slice::from_ref(&viewport));
     device.cmd_set_scissor(command_buffer, 0, std::slice::from_ref(&scissor));
-    device.cmd_draw(command_buffer, 3, 1, 0, 0);
+    for entity in scene.visible_entities() {
+        let push_constants = scene.push_constants(entity);
+        let camera_bytes = std::slice::from_raw_parts(
+            (&push_constants as *const CameraPushConstants).cast::<u8>(),
+            size_of::<CameraPushConstants>(),
+        );
+        device.cmd_push_constants(
+            command_buffer,
+            pipeline_layout,
+            vk::ShaderStageFlags::VERTEX,
+            0,
+            camera_bytes,
+        );
+        device.cmd_draw(command_buffer, entity.mesh.vertex_count, 1, 0, 0);
+    }
     device.cmd_end_render_pass(command_buffer);
     device.end_command_buffer(command_buffer)?;
     Ok(())

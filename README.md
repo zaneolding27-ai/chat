@@ -22,6 +22,13 @@ The build script compiles `shaders/triangle.vert` and `shaders/triangle.frag` to
 - Mouse movement changes the camera yaw and pitch.
 - The camera position is printed once per rendered frame.
 
+## Scene graph
+
+The renderer owns a scene graph containing a camera and entities. Each entity has a
+transform, a mesh descriptor, and a visibility flag. Every visible entity is drawn
+each frame with its transform and color sent to the vertex shader through push
+constants. `Scene::demo()` creates two visible triangles to demonstrate the setup.
+
 ## Resource manager
 
 `resource_manager::ResourceManager` loads relative paths from a configured directory,
