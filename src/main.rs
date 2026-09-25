@@ -20,6 +20,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
+pub mod noise;
 pub mod resource_manager;
 mod scene;
 use scene::{CameraPushConstants, Scene};

@@ -41,3 +41,13 @@ let shader = resources.load("shaders/example.spv")?;
 ```
 
 Absolute paths and paths that traverse outside the resource directory are rejected.
+
+## Seeded simplex noise
+
+`noise::simplex(seed, x, y)` returns a deterministic 2D height value in the
+range `[-1.0, 1.0]`. The same seed and coordinates always produce the same
+result, while changing the seed produces a different noise field:
+
+```rust
+let height = ash_vulkan_triangle::noise::simplex(42, 12.5, -3.25);
+```
