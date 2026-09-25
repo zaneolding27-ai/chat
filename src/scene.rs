@@ -37,6 +37,7 @@ pub struct CameraPushConstants {
 pub struct Scene {
     pub camera: Camera,
     pub entities: Vec<Entity>,
+    pub planet: PlanetTerrain,
 }
 
 impl Default for Camera {
@@ -129,7 +130,12 @@ impl Scene {
                     visible: true,
                 },
             ],
+            planet: PlanetTerrain::new(10.0, 8, 42),
         }
+    }
+
+    pub fn update_terrain(&mut self) {
+        self.planet.update_streaming(self.camera.position);
     }
 
     pub fn visible_entities(&self) -> impl Iterator<Item = &Entity> {
@@ -160,3 +166,4 @@ impl Scene {
         }
     }
 }
+use crate::terrain::PlanetTerrain;

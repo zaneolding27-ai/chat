@@ -23,6 +23,7 @@ use winit::{
 pub mod noise;
 pub mod resource_manager;
 mod scene;
+pub mod terrain;
 use scene::{CameraPushConstants, Scene};
 
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
@@ -329,11 +330,13 @@ impl Renderer {
             &mut self.input.mouse_delta,
             delta_time,
         );
+        self.scene.update_terrain();
         println!(
-            "camera position: ({:.3}, {:.3}, {:.3})",
+            "camera position: ({:.3}, {:.3}, {:.3}), loaded planet tiles: {}",
             self.scene.camera.position[0],
             self.scene.camera.position[1],
-            self.scene.camera.position[2]
+            self.scene.camera.position[2],
+            self.scene.planet.loaded_tile_count()
         );
 
         let fence = self.in_flight_fences[self.current_frame];

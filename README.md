@@ -54,3 +54,12 @@ let height = ash_vulkan_triangle::noise::simplex(42, 12.5, -3.25);
 
 The demo scene uses seed `42` to place its two triangles at deterministic noise
 heights and prints those values when the window starts.
+
+## Chunked planet terrain
+
+`terrain::PlanetTerrain` starts one planet divided into six cube faces with
+`4 x 4` tiles per face. Each tile is projected onto the sphere, displaced by
+seeded simplex noise, and stored as an indexed mesh. `Scene::update_terrain`
+streams tiles whose centers are within the load distance of the camera and
+retains a hysteresis band until they move beyond the unload distance. The
+current loaded tile count is printed with the camera position each frame.
