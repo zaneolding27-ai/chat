@@ -61,7 +61,10 @@ impl ApplicationHandler for App {
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(_) => renderer.framebuffer_resized = true,
+            WindowEvent::Resized(size) => {
+                renderer.framebuffer_resized = size.width != renderer.swapchain_extent.width
+                    || size.height != renderer.swapchain_extent.height;
+            }
             WindowEvent::RedrawRequested => {
                 if let Err(error) = unsafe { renderer.draw_frame() } {
                     eprintln!("rendering failed: {error}");
@@ -332,8 +335,8 @@ impl Renderer {
         for view in self.swapchain_image_views.drain(..) {
             self.device.destroy_image_view(view, None);
         }
-        self.swapchain_loader
-            .destroy_swapchain(self.swapchain, None);
+        let old_swapchain = self.swapchain;
+        self.swapchain_loader.destroy_swapchain(old_swapchain, None);
         let (swapchain, images, format, extent) = create_swapchain(
             &self.surface_loader,
             &self.swapchain_loader,
@@ -341,7 +344,7 @@ impl Renderer {
             self.surface,
             self.queue_family_index,
             &self.window,
-            self.swapchain,
+            vk::SwapchainKHR::null(),
         )?;
         self.swapchain = swapchain;
         self.swapchain_images = images;
