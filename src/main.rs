@@ -134,6 +134,15 @@ struct Camera {
     look_sensitivity: f32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CameraPushConstants {
+    position: [f32; 3],
+    yaw: f32,
+    pitch: f32,
+    padding: [f32; 3],
+}
+
 impl Default for Camera {
     fn default() -> Self {
         Self {
@@ -395,7 +404,14 @@ impl Renderer {
             self.render_pass,
             self.framebuffers[image_index as usize],
             self.swapchain_extent,
+            self.pipeline_layout,
             self.graphics_pipeline,
+            CameraPushConstants {
+                position: self.camera.position,
+                yaw: self.camera.yaw,
+                pitch: self.camera.pitch,
+                padding: [0.0; 3],
+            },
         )?;
         let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
@@ -706,7 +722,15 @@ unsafe fn create_graphics_pipeline(
     let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
     let dynamic_state =
         vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-    let layout = device.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default(), None)?;
+    let push_constant_range = vk::PushConstantRange::default()
+        .stage_flags(vk::ShaderStageFlags::VERTEX)
+        .offset(0)
+        .size(size_of::<CameraPushConstants>() as u32);
+    let layout = device.create_pipeline_layout(
+        &vk::PipelineLayoutCreateInfo::default()
+            .push_constant_ranges(std::slice::from_ref(&push_constant_range)),
+        None,
+    )?;
     let info = vk::GraphicsPipelineCreateInfo::default()
         .stages(&stages)
         .vertex_input_state(&vertex_input)
@@ -766,7 +790,9 @@ unsafe fn record_command_buffer(
     render_pass: vk::RenderPass,
     framebuffer: vk::Framebuffer,
     extent: vk::Extent2D,
+    pipeline_layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
+    camera: CameraPushConstants,
 ) -> AppResult<()> {
     device.begin_command_buffer(command_buffer, &vk::CommandBufferBeginInfo::default())?;
     let clear = vk::ClearValue {
@@ -784,6 +810,17 @@ unsafe fn record_command_buffer(
         vk::SubpassContents::INLINE,
     );
     device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
+    let camera_bytes = std::slice::from_raw_parts(
+        (&camera as *const CameraPushConstants).cast::<u8>(),
+        size_of::<CameraPushConstants>(),
+    );
+    device.cmd_push_constants(
+        command_buffer,
+        pipeline_layout,
+        vk::ShaderStageFlags::VERTEX,
+        0,
+        camera_bytes,
+    );
     let viewport = vk::Viewport::default()
         .width(extent.width as f32)
         .height(extent.height as f32)
