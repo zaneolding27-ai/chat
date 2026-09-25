@@ -9,12 +9,14 @@ use std::{
     ffi::{CStr, CString},
     mem::size_of,
     os::raw::c_void,
+    time::Instant,
 };
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
-    event::WindowEvent,
+    event::{DeviceEvent, ElementState, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
+    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
 };
 
@@ -65,6 +67,11 @@ impl ApplicationHandler for App {
                 renderer.framebuffer_resized = size.width != renderer.swapchain_extent.width
                     || size.height != renderer.swapchain_extent.height;
             }
+            WindowEvent::KeyboardInput { event, .. } => {
+                if let PhysicalKey::Code(key) = event.physical_key {
+                    renderer.input.set_key(key, event.state);
+                }
+            }
             WindowEvent::RedrawRequested => {
                 if let Err(error) = unsafe { renderer.draw_frame() } {
                     eprintln!("rendering failed: {error}");
@@ -72,6 +79,15 @@ impl ApplicationHandler for App {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn device_event(&mut self, _: &ActiveEventLoop, _: winit::event::DeviceId, event: DeviceEvent) {
+        if let Some(renderer) = self.renderer.as_mut() {
+            if let DeviceEvent::MouseMotion { delta } = event {
+                renderer.input.mouse_delta.0 += delta.0 as f32;
+                renderer.input.mouse_delta.1 += delta.1 as f32;
+            }
         }
     }
 
@@ -84,6 +100,84 @@ impl ApplicationHandler for App {
     fn exiting(&mut self, _: &ActiveEventLoop) {
         if let Some(renderer) = self.renderer.take() {
             unsafe { renderer.destroy() };
+        }
+    }
+}
+
+#[derive(Default)]
+struct InputState {
+    forward: bool,
+    backward: bool,
+    left: bool,
+    right: bool,
+    mouse_delta: (f32, f32),
+}
+
+impl InputState {
+    fn set_key(&mut self, key: KeyCode, state: ElementState) {
+        let pressed = state == ElementState::Pressed;
+        match key {
+            KeyCode::KeyW => self.forward = pressed,
+            KeyCode::KeyS => self.backward = pressed,
+            KeyCode::KeyA => self.left = pressed,
+            KeyCode::KeyD => self.right = pressed,
+            _ => {}
+        }
+    }
+}
+
+struct Camera {
+    position: [f32; 3],
+    yaw: f32,
+    pitch: f32,
+    move_speed: f32,
+    look_sensitivity: f32,
+}
+
+impl Default for Camera {
+    fn default() -> Self {
+        Self {
+            position: [0.0, 0.0, 3.0],
+            yaw: 0.0,
+            pitch: 0.0,
+            move_speed: 3.0,
+            look_sensitivity: 0.0025,
+        }
+    }
+}
+
+impl Camera {
+    fn update(&mut self, input: &mut InputState, delta_time: f32) {
+        self.yaw -= input.mouse_delta.0 * self.look_sensitivity;
+        self.pitch = (self.pitch - input.mouse_delta.1 * self.look_sensitivity)
+            .clamp(-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
+        input.mouse_delta = (0.0, 0.0);
+
+        let forward = [self.yaw.sin(), 0.0, -self.yaw.cos()];
+        let right = [self.yaw.cos(), 0.0, self.yaw.sin()];
+        let mut movement = [0.0, 0.0, 0.0];
+        if input.forward {
+            movement[0] += forward[0];
+            movement[2] += forward[2];
+        }
+        if input.backward {
+            movement[0] -= forward[0];
+            movement[2] -= forward[2];
+        }
+        if input.right {
+            movement[0] += right[0];
+            movement[2] += right[2];
+        }
+        if input.left {
+            movement[0] -= right[0];
+            movement[2] -= right[2];
+        }
+
+        let length = (movement[0] * movement[0] + movement[2] * movement[2]).sqrt();
+        if length > 0.0 {
+            let distance = self.move_speed * delta_time / length;
+            self.position[0] += movement[0] * distance;
+            self.position[2] += movement[2] * distance;
         }
     }
 }
@@ -117,6 +211,9 @@ struct Renderer {
     in_flight_fences: Vec<vk::Fence>,
     current_frame: usize,
     framebuffer_resized: bool,
+    input: InputState,
+    camera: Camera,
+    last_frame: Instant,
 }
 
 impl Renderer {
@@ -258,10 +355,22 @@ impl Renderer {
             in_flight_fences,
             current_frame: 0,
             framebuffer_resized: false,
+            input: InputState::default(),
+            camera: Camera::default(),
+            last_frame: Instant::now(),
         })
     }
 
     unsafe fn draw_frame(&mut self) -> AppResult<()> {
+        let now = Instant::now();
+        let delta_time = (now - self.last_frame).as_secs_f32().min(0.1);
+        self.last_frame = now;
+        self.camera.update(&mut self.input, delta_time);
+        println!(
+            "camera position: ({:.3}, {:.3}, {:.3})",
+            self.camera.position[0], self.camera.position[1], self.camera.position[2]
+        );
+
         let fence = self.in_flight_fences[self.current_frame];
         self.device.wait_for_fences(&[fence], true, u64::MAX)?;
         let acquire = self.swapchain_loader.acquire_next_image(

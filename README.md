@@ -15,3 +15,9 @@ cargo run
 ```
 
 The build script compiles `shaders/triangle.vert` and `shaders/triangle.frag` to SPIR-V using `shaderc`, so no external shader compiler is needed.
+
+## Camera controls
+
+- `W` / `A` / `S` / `D` move the camera forward, left, backward, and right.
+- Mouse movement changes the camera yaw and pitch.
+- The camera position is printed once per rendered frame.
