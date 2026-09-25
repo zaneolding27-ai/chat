@@ -616,9 +616,14 @@ unsafe fn create_graphics_pipeline(
 }
 
 unsafe fn create_shader_module(device: &ash::Device, bytes: &[u8]) -> AppResult<vk::ShaderModule> {
-    let words =
-        std::slice::from_raw_parts(bytes.as_ptr() as *const u32, bytes.len() / size_of::<u32>());
-    Ok(device.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(words), None)?)
+    if bytes.len() % size_of::<u32>() != 0 {
+        return Err("SPIR-V bytecode length is not divisible by four".into());
+    }
+    let words: Vec<u32> = bytes
+        .chunks_exact(size_of::<u32>())
+        .map(|chunk| u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect();
+    Ok(device.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(&words), None)?)
 }
 
 unsafe fn create_framebuffers(
