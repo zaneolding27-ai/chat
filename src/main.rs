@@ -53,7 +53,14 @@ impl ApplicationHandler for App {
         };
 
         match unsafe { Renderer::new(window) } {
-            Ok(renderer) => self.renderer = Some(renderer),
+            Ok(renderer) => {
+                println!(
+                    "seeded noise demo (seed 42): left={:.3}, right={:.3}",
+                    renderer.scene.entities[0].transform.position[1],
+                    renderer.scene.entities[1].transform.position[1]
+                );
+                self.renderer = Some(renderer);
+            }
             Err(error) => {
                 eprintln!("failed to initialize Vulkan: {error}");
                 event_loop.exit();

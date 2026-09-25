@@ -51,3 +51,6 @@ result, while changing the seed produces a different noise field:
 ```rust
 let height = ash_vulkan_triangle::noise::simplex(42, 12.5, -3.25);
 ```
+
+The demo scene uses seed `42` to place its two triangles at deterministic noise
+heights and prints those values when the window starts.

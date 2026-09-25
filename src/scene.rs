@@ -97,16 +97,19 @@ impl Camera {
 
 impl Scene {
     pub fn demo() -> Self {
+        let seed = 42;
         let triangle = Mesh {
             vertex_count: 3,
             color: [1.0, 0.3, 0.2],
         };
+        let left_height = crate::noise::simplex(seed, -1.3, 0.0);
+        let right_height = crate::noise::simplex(seed, 1.3, 0.0);
         Self {
             camera: Camera::default(),
             entities: vec![
                 Entity {
                     transform: Transform {
-                        position: [-1.3, 0.0, 0.0],
+                        position: [-1.3, left_height, 0.0],
                         scale: 0.8,
                         rotation: 0.0,
                     },
@@ -115,7 +118,7 @@ impl Scene {
                 },
                 Entity {
                     transform: Transform {
-                        position: [1.3, 0.0, 0.0],
+                        position: [1.3, right_height, 0.0],
                         scale: 0.8,
                         rotation: 0.0,
                     },
