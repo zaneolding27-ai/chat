@@ -20,6 +20,8 @@ use winit::{
     window::{Window, WindowId},
 };
 
+pub mod resource_manager;
+
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
 const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
 

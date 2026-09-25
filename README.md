@@ -21,3 +21,16 @@ The build script compiles `shaders/triangle.vert` and `shaders/triangle.frag` to
 - `W` / `A` / `S` / `D` move the camera forward, left, backward, and right.
 - Mouse movement changes the camera yaw and pitch.
 - The camera position is printed once per rendered frame.
+
+## Resource manager
+
+`resource_manager::ResourceManager` loads relative paths from a configured directory,
+keeps recently used file contents in memory, and evicts the least recently used
+resources when the byte budget is exceeded:
+
+```rust
+let mut resources = ResourceManager::new("assets", 16 * 1024 * 1024);
+let shader = resources.load("shaders/example.spv")?;
+```
+
+Absolute paths and paths that traverse outside the resource directory are rejected.
